@@ -105,9 +105,9 @@ test('Trakt importer loads movies and series independently',async()=>{
    assert.equal(opts.method,'POST');
    return {ok:true,status:200,json:async()=>({user_code:'CODE',device_code:'DEVICE'})};
   }
-  if(u.pathname.endsWith('/movies')&&u.pathname.includes('/watched/'))return {ok:true,status:200,json:async()=>[{movie:{ids:{imdb:'tt0000001'}},last_watched_at:'2026-11-07'}]};
-  if(u.pathname.endsWith('/shows')&&u.pathname.includes('/watched/'))return {ok:true,status:200,json:async()=>[{show:{ids:{imdb:'tt0000004'}},last_watched_at:'2026-11-06'}]};
-  return {ok:true,status:200,json:async()=>[]};
+  if(u.pathname.endsWith('/movies')&&u.pathname.includes('/watched/'))return {ok:true,status:200,headers:{get:()=> '1'},json:async()=>[{movie:{ids:{imdb:'tt0000001'}},last_watched_at:'2026-11-07'}]};
+  if(u.pathname.endsWith('/shows')&&u.pathname.includes('/watched/'))return {ok:true,status:200,headers:{get:()=> '1'},json:async()=>[{show:{ids:{imdb:'tt0000004'}},last_watched_at:'2026-11-06'}]};
+  return {ok:true,status:200,headers:{get:()=> '1'},json:async()=>[]};
  };
  const device=await traktDeviceCode({clientId:'fake',fetchImpl});
  assert.equal(device.user_code,'CODE');
@@ -133,5 +133,92 @@ test('Simkl sync uses activity endpoint, then skips unchanged history',async()=>
  assert.equal(next.status,'unchanged');
  assert.equal(urls.filter(u=>u.includes('activities')).length,2);
  assert.equal(urls.filter(u=>u.includes('all-items')).length,2);
+ delete process.env.RECO_SECRET_KEY;
+});
+
+
+test('Trakt watched pagination follows server page count and includes all films', async()=>{
+ const {fetchTraktHistory}=await import('./trakt.mjs');
+ const called=[];
+ const fetchImpl=async(url)=>{
+  const u=new URL(url),page=Number(u.searchParams.get('page'));called.push(`${u.pathname}:${page}`);
+  assert.equal(u.searchParams.get('limit'),'250');
+  const isMovie=u.pathname==='/sync/watched/movies';
+  const rows=isMovie&&page===1?[{movie:{ids:{imdb:'tt0000001'}},last_watched_at:'2026-11-01'}]:
+   isMovie&&page===2?[{movie:{ids:{imdb:'tt0000002'}},last_watched_at:'2026-11-06'}]:[];
+  const pages=isMovie?'2':'1';
+  return {status:200,ok:true,headers:{get:(name)=>name==='x-pagination-page-count'?pages:null},json:async()=>rows};
+ };
+ const h=await fetchTraktHistory({clientId:'test-app',accessToken:'test-token',fetchImpl});
+ assert.deepEqual(h.watchedIds,['tt0000002','tt0000001']);
+ assert.deepEqual(called.slice(0,2),['/sync/watched/movies:1','/sync/watched/movies:2']);
+ assert.equal(called.includes('/sync/watched/movies:3'),false);
+});
+test('Trakt pagination without headers fetches until empty page',async()=>{
+ const {fetchTraktHistory}=await import('./trakt.mjs');
+ const paths=[];
+ const fetchImpl=async(url)=>{
+  const u=new URL(url),page=Number(u.searchParams.get('page'));
+  paths.push(`${u.pathname}:${page}`);
+  return {ok:true,status:200,json:async()=>u.pathname==='/sync/watched/movies'&&page===1?
+   [{movie:{ids:{imdb:'tt0000001'}}}]:[]};
+ };
+ const h=await fetchTraktHistory({clientId:'app',accessToken:'token',fetchImpl});
+ assert.deepEqual(h.watchedIds,['tt0000001']);
+ assert.deepEqual(paths.slice(0,2),['/sync/watched/movies:1','/sync/watched/movies:2']);
+});
+test('Trakt fails closed on duplicated pages and errors (no partial history)',async()=>{
+ const {fetchTraktHistory}=await import('./trakt.mjs');
+ const duplicate=async(url)=>({ok:true,status:200,json:async()=>[{movie:{ids:{imdb:'tt0000001'}}}]});
+ await assert.rejects(fetchTraktHistory({clientId:'app',accessToken:'token',fetchImpl:duplicate}),/loop detected/);
+ const failure=async(url)=>({ok:false,status:429,json:async()=>null});
+ await assert.rejects(fetchTraktHistory({clientId:'app',accessToken:'token',fetchImpl:failure}),/429/);
+});
+test('Trakt token normalization guards missing created_at',async()=>{
+ const {normalizeAuth}=await import('./trakt.mjs');
+ const now=Math.floor(Date.now()/1000);
+ const normalized=normalizeAuth({access_token:'a',refresh_token:'b'});
+ assert.ok(normalized.created_at>=now-1);
+ assert.equal(normalized.expires_in,604800);
+});
+
+
+test('TMDB adds previously watched Trakt titles as training references',async()=>{
+ const recentId='tt8765432';
+ const fetchImpl=async(url)=>{
+  const u=new URL(url);
+  if(u.pathname.includes('/genre/'))return {ok:true,json:async()=>({genres:[{id:878,name:'Science-fiction'},{id:18,name:'Drame'}]})};
+  if(u.pathname.includes('/find/'))return {ok:true,json:async()=>({movie_results:[{id:900,poster_path:'/older.jpg',title:'Old watched film',genre_ids:[878],vote_count:400,vote_average:8.3}],tv_results:[]})};
+  if(u.pathname.includes('/external_ids'))return {ok:true,json:async()=>({imdb_id:u.pathname.includes('/tv/')?'tt0000010':'tt0000009'})};
+  return {ok:true,json:async()=>({results:[{id:1,poster_path:'/movie.jpg',title:'Discovery',name:'Series',genre_ids:[18],vote_count:100,vote_average:7.5}]})};
+ };
+ const result=await buildTmdbCatalog({token:'fake',fetchImpl,maxPerType:5,profiles:[{recentWatchedIds:[recentId],likedIds:[]}]});
+ assert.ok(result.find(x=>x.id===recentId));
+ const history=result.find(x=>x.id===recentId);
+ assert.deepEqual(history.genres,['Science-fiction']);
+ assert.equal(history.name,'Old watched film');
+});
+test('Trakt sync activity fingerprint avoids extra fetch and isolates profiles',async()=>{
+ const {syncTraktIfChanged}=await import('./trakt.mjs');
+ const key='a'.repeat(64);
+ process.env.RECO_SECRET_KEY=key;
+ const profiles=loadProfiles();
+ const tracked=profiles.profiles.find(p=>p.id===a.id);
+ tracked.traktAuthEncrypted=core.sealSecret(JSON.stringify({access_token:'token',refresh_token:'refresh',created_at:Math.floor(Date.now()/1000),expires_in:604800}),key);
+ tracked.historySource='trakt';
+ saveJSON(PROFILE_FILE,profiles);
+ const urlPaths=[];
+ const fetchImpl=async(url)=>{
+  const u=new URL(url);urlPaths.push(u.pathname);
+  if(u.pathname==='/sync/last_activities')return {ok:true,status:200,json:async()=>({movies:{watched_at:'2026-11-07'}})};
+  if(u.pathname==='/sync/watched/movies')return {ok:true,status:200,headers:{get:()=> '1'},json:async()=>[{movie:{ids:{imdb:'tt0000001'}},last_watched_at:'2026-11-06'}]};
+  return {ok:true,status:200,headers:{get:()=> '1'},json:async()=>[]};
+ };
+ const first=await syncTraktIfChanged(a.id,{clientId:'fake',fetchImpl});
+ assert.equal(first.status,'updated');
+ const second=await syncTraktIfChanged(a.id,{clientId:'fake',fetchImpl});
+ assert.equal(second.status,'unchanged');
+ assert.deepEqual(loadProfiles().profiles.find(p=>p.id===b.id).watchedIds,[]);
+ assert.equal(urlPaths.filter(x=>x.includes('/watched/')).length,2);
  delete process.env.RECO_SECRET_KEY;
 });
