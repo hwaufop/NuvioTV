@@ -719,7 +719,18 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
     // Rank currently loaded catalog content using this profile's watch history.
     // Use a real catalog as the source so poster navigation keeps valid addon metadata.
     val recommendationHistorySnapshot = recommendationHistory.value
-    val recommendationSource = displayRows.firstOrNull { it.items.isNotEmpty() }
+    val watchedKeys = recommendationHistorySnapshot.mapTo(hashSetOf()) {
+        "${it.contentType.trim().lowercase()}:${it.contentId}"
+    }
+    // Prefer a catalog containing watched titles with genre metadata; this
+    // lets the local analyzer learn tastes without requesting extra metadata.
+    val recommendationSource = displayRows
+        .filter { row -> row.items.any { it.genres.isNotEmpty() } }
+        .maxByOrNull { row ->
+            row.items.count { item ->
+                "${item.apiType.trim().lowercase()}:${item.id}" in watchedKeys && item.genres.isNotEmpty()
+            }
+        }
     val recommendationRow = if (recommendationSource != null && recommendationHistorySnapshot.isNotEmpty()) {
         val candidates = recommendationSource.items
             .filter { !it.id.startsWith("__placeholder_") }
