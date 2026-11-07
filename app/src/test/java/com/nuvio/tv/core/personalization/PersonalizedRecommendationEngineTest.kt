@@ -69,4 +69,17 @@ class PersonalizedRecommendationEngineTest {
         assertEquals(1, results.size)
         assertTrue(results.first().id in setOf("a", "b"))
     }
+
+    @Test
+    fun imdbAliasOfWatchedTitleIsExcluded() {
+        val alias = movie("tmdb:42", "Action").copy(imdbId = "tt0000042")
+        val results = engine.recommend(
+            profileId = 1,
+            candidates = listOf(alias),
+            preferredGenres = mapOf("action" to 1),
+            watchedContentIds = setOf("movie:tt0000042")
+        )
+
+        assertTrue(results.isEmpty())
+    }
 }
