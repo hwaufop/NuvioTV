@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nuvio-reco-private",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "triggers": { "crons": ["0 * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nuvio-reco",
+      "database_id": "68d364ee-ed55-46b9-8505-dcf330914cb0",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

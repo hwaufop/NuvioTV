@@ -1,0 +1,32 @@
+{
+  "profiles": [
+    {
+      "name": "Profil cinéma — DEMO",
+      "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "watchedIds": [],
+      "hiddenIds": [],
+      "likedIds": [],
+      "favoriteGenres": [
+        "Sci-Fi",
+        "Drama"
+      ],
+      "recentlyWatchedGenres": [
+        "Sci-Fi"
+      ]
+    },
+    {
+      "name": "Profil détente — DEMO",
+      "token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "watchedIds": [],
+      "hiddenIds": [],
+      "likedIds": [],
+      "favoriteGenres": [
+        "Romance",
+        "Comedy"
+      ],
+      "recentlyWatchedGenres": [
+        "Romance"
+      ]
+    }
+  ]
+}

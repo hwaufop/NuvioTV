@@ -1,0 +1,22 @@
+name: Nuvio Reco Cloudflare tests
+on:
+  pull_request:
+    paths:
+      - 'nuvio-reco/cloudflare/**'
+      - '.github/workflows/worker-tests.yml'
+  push:
+    paths:
+      - 'nuvio-reco/cloudflare/**'
+      - '.github/workflows/worker-tests.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nuvio-reco/cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
