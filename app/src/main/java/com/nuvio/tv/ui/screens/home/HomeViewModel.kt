@@ -89,6 +89,7 @@ class HomeViewModel @Inject constructor(
     internal val profileManager: com.nuvio.tv.core.profile.ProfileManager,
     internal val tvRecommendationManager: TvRecommendationManager,
     internal val serverCatalog: ServerCatalog,
+    internal val personalizedRecommendationService: com.nuvio.tv.core.personalization.PersonalizedRecommendationService,
     internal val metaPreviewEnricher: MetaPreviewEnricher = MetaPreviewEnricher(
         tmdbService,
         tmdbMetadataService,
@@ -146,6 +147,7 @@ class HomeViewModel @Inject constructor(
         .distinctUntilChanged()
     internal val _fullCatalogRows = MutableStateFlow<List<CatalogRow>>(emptyList())
     val fullCatalogRows: StateFlow<List<CatalogRow>> = _fullCatalogRows.asStateFlow()
+    internal val recommendationHistory = MutableStateFlow<List<com.nuvio.tv.domain.model.WatchProgress>>(emptyList())
 
     private val _focusState = MutableStateFlow(HomeScreenFocusState())
     val focusState: StateFlow<HomeScreenFocusState> = _focusState.asStateFlow()
@@ -382,6 +384,7 @@ class HomeViewModel @Inject constructor(
             observeProgressSourceChanges()
             observeCollections()
             observeInstalledAddons()
+            observePersonalizedRecommendationHistoryPipeline()
             observeManualAddonRefresh()
 
             // Clear CW state when profile changes so items don't leak between profiles.
@@ -390,6 +393,7 @@ class HomeViewModel @Inject constructor(
                 if (newId != previousProfileId) {
                     previousProfileId = newId
                     // Cancel old pipeline — prevents racing writes from stale coroutines.
+                    recommendationHistory.value = emptyList()
                     cwPipelineJob?.cancel()
                     cwPipelineJob = null
                     // Clear all in-memory CW caches so data from the previous
