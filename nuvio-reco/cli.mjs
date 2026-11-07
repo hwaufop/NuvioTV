@@ -1,8 +1,13 @@
 import {loadProfiles,saveJSON,PROFILE_FILE,newProfile,sealSecret} from './core.mjs';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {refreshTmdb,beginSimklPin,pollSimklPin,importSimklProfile,syncAll} from './providers.mjs';
-import {traktDeviceCode,traktDeviceToken,syncTraktIfChanged} from './trakt.mjs';
+import {traktDeviceCode,traktDeviceToken,syncTraktIfChanged,normalizeAuth} from './trakt.mjs';
 const [command,...args]=process.argv.slice(2);
 function usage(){console.log(`Usage:
+ node cli.mjs prepare-local
  node cli.mjs init [nom]
  node cli.mjs add-profile "nom"
  node cli.mjs profiles
@@ -13,10 +18,23 @@ function usage(){console.log(`Usage:
  node cli.mjs import-trakt "nom"
  node cli.mjs import-simkl "nom"
  node cli.mjs sync-all
+ node cli.mjs doctor
 `);}
 function get(name){const d=loadProfiles();const p=d.profiles.find(p=>p.id===name||p.name===name);if(!p)throw new Error('Profil introuvable');return {d,p};}
 try{
- if(command==='init'){
+ if(command==='prepare-local'){
+  const envPath=path.join(path.dirname(fileURLToPath(import.meta.url)),'.env');
+  if(!fs.existsSync(envPath)){
+   const key=crypto.randomBytes(32).toString('hex');
+   fs.writeFileSync(envPath,`# Private local secrets - NEVER upload this file to GitHub\nPORT=7000\nHOST=127.0.0.1\nAUTO_SYNC=1\nRECO_SECRET_KEY=${key}\n# TRAKT_CLIENT_ID=\n# TRAKT_CLIENT_SECRET=\n# TMDB_READ_TOKEN=\n# PUBLIC_URL=\n`,{mode:0o600,flag:'wx'});
+   console.log('Private .env file created locally (encryption key generated).');
+  } else console.log('Private .env file already exists; kept unchanged.');
+  const d=loadProfiles();
+  if(!d.profiles.length){d.profiles.push(newProfile('Principal'));saveJSON(PROFILE_FILE,d);
+   console.log('Created default Principal profile.');}
+  else console.log(`Existing profiles retained: ${d.profiles.length}`);
+  console.log('Next: edit .env locally with your Trakt client ID and TMDB read token.');
+ }else if(command==='init'){
   const d=loadProfiles();if(d.profiles.length)throw new Error('Un profil existe déjà, utilise add-profile');
   const p=newProfile(args[0]||'Principal');d.profiles.push(p);saveJSON(PROFILE_FILE,d);
   console.log(`Profil créé: ${p.name}\nURL locale à installer: http://localhost:${process.env.PORT||7000}/p/${p.token}/manifest.json`);
@@ -45,18 +63,30 @@ try{
    if(status.message&&!/pending|slow down/i.test(status.message))throw new Error('Simkl: '+status.message);
   }
   console.log(connected?'Connexion Simkl enregistrée localement.':'Code Simkl expiré. Réessaie.');
+ }else if(command==='doctor'){
+  const profiles=loadProfiles().profiles;
+  const keyReady=/^[0-9a-f]{64}$/i.test(process.env.RECO_SECRET_KEY||'');
+  const status={profiles:profiles.length,traktClientConfigured:!!process.env.TRAKT_CLIENT_ID,
+    tmdbTokenConfigured:!!process.env.TMDB_READ_TOKEN,secretKeyConfigured:keyReady,
+    linkedProfiles:profiles.filter(p=>p.traktAuthEncrypted).length,
+    publicHttpsConfigured:/^https:\/\//.test(process.env.PUBLIC_URL||''),
+    nextStep:!keyReady?'Set RECO_SECRET_KEY locally':!process.env.TRAKT_CLIENT_ID?'Register Trakt app and set TRAKT_CLIENT_ID':!process.env.TMDB_READ_TOKEN?'Set TMDB_READ_TOKEN':'Connect each profile to Trakt'};
+  console.log(JSON.stringify(status,null,2));
  }else if(command==='connect-trakt'){
   const {d,p}=get(args[0]);sealSecret('validation-only');
   const code=await traktDeviceCode();
   if(!code.device_code||!code.user_code)throw new Error('Trakt device code missing');
   console.log(`Ouvre ${code.verification_url||'https://trakt.tv/activate'} et entre ${code.user_code} pour ${p.name}`);
-  const interval=Math.max(5,Number(code.interval)||5)*1000,expires=Date.now()+Math.min(900,Number(code.expires_in)||900)*1000;
+  let interval=Math.max(5,Number(code.interval)||5)*1000;
+  const expires=Date.now()+Math.min(900,Number(code.expires_in)||900)*1000;
   let connected=false;
   while(Date.now()<expires){
    await new Promise(r=>setTimeout(r,interval));const r=await traktDeviceToken({deviceCode:code.device_code});
-   if(r.ok&&r.data?.access_token){p.traktAuthEncrypted=sealSecret(JSON.stringify(r.data));p.historySource='trakt';
+   if(r.ok&&r.data?.access_token&&r.data?.refresh_token){p.traktAuthEncrypted=sealSecret(JSON.stringify(normalizeAuth(r.data)));p.historySource='trakt';
     saveJSON(PROFILE_FILE,d);connected=true;break;}
-   if(![400,404,409,429].includes(r.status))throw new Error(`Trakt authorization HTTP ${r.status}`);
+   if([404,409,410,418].includes(r.status))throw new Error(`Trakt authorization cancelled or expired (HTTP ${r.status})`);
+   if(r.status===429){interval+=5000;continue;}
+   if(r.status!==400)throw new Error(`Trakt authorization HTTP ${r.status}`);
   }
   console.log(connected?'Trakt lié au profil local.':'Code expiré.');
  }else if(command==='import-trakt'){console.log(await syncTraktIfChanged(args[0],{force:true}));}
