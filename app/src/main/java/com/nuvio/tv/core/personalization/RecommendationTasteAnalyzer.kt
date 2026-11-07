@@ -19,12 +19,12 @@ class RecommendationTasteAnalyzer @Inject constructor() {
         }
 
         val contentById = availableContent
-            .associateBy { "${it.apiType}:${it.id}" }
+            .associateBy { "${it.apiType.trim().lowercase()}:${it.id}" }
 
         val scores = mutableMapOf<String, Int>()
 
         history.forEach { progress ->
-            val key = "${progress.contentType}:${progress.contentId}"
+            val key = "${progress.contentType.trim().lowercase()}:${progress.contentId}"
             val content = contentById[key] ?: return@forEach
 
             val weight = when {
