@@ -26,13 +26,17 @@ class PersonalizedRecommendationService @Inject constructor(
         if (limit <= 0 || availableContent.isEmpty()) return emptyList()
 
         val learnedGenres = tasteAnalyzer.analyze(history, availableContent)
+        val storedGenres = preferencesStore.observePreferredGenres(profileId).first()
         val preferences = if (learnedGenres.isNotEmpty()) {
-            preferencesStore.savePreferredGenres(profileId, learnedGenres)
+            // Home rows can rebuild frequently; avoid unnecessary DataStore edits.
+            if (learnedGenres != storedGenres) {
+                preferencesStore.savePreferredGenres(profileId, learnedGenres)
+            }
             learnedGenres
         } else {
             // Preserve previously learned tastes when watched titles are absent
             // from the currently loaded catalog.
-            preferencesStore.observePreferredGenres(profileId).first()
+            storedGenres
         }
 
         // Without any genre signal this would only sort by rating, not taste.
