@@ -1,0 +1,39 @@
+name: Personalized Recommendations CI
+
+on:
+  push:
+    branches:
+      - nuvio-recommandations
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recommendations:
+    name: Kotlin tests and fullDebug compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Prepare Android build properties
+        run: |
+          touch local.properties
+          touch local.dev.properties
+          keytool -genkeypair -v -keystore "$RUNNER_TEMP/ci-debug.jks" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          {
+            echo "NUVIO_RELEASE_STORE_FILE=$RUNNER_TEMP/ci-debug.jks"
+            echo "NUVIO_RELEASE_KEY_ALIAS=androiddebugkey"
+            echo "NUVIO_RELEASE_KEY_PASSWORD=android"
+            echo "NUVIO_RELEASE_STORE_PASSWORD=android"
+          } >> "$GITHUB_ENV"
+      - name: Compile and run recommendation tests
+        run: |
+          ./gradlew :app:compileFullDebugKotlin :app:testFullDebugUnitTest --tests 'com.nuvio.tv.core.personalization.*' --stacktrace
