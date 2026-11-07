@@ -14,19 +14,23 @@ Addon privé de **catalogues Stremio/Nuvio** : un seul moteur, un manifeste dist
 
 ## Préparer l'application en local
 
-1. Installer Node.js 22 ou plus récent et ouvrir un terminal dans `nuvio-reco/`. Pour préparer automatiquement le profil principal et le fichier `.env` privé, lancer d’abord `node cli.mjs prepare-local`.
-2. Copier `.env.example` vers `.env` (ne jamais committer `.env`). Générer une clé :
+1. Installer Node.js 22 ou plus récent, puis ouvrir un terminal dans `nuvio-reco/`. Préparer automatiquement un fichier `.env` privé et un premier profil :
 
    ```bash
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   node cli.mjs prepare-local
    ```
 
-   Mettre la valeur dans `RECO_SECRET_KEY=`. Pour les APIs, demander **TMDB API Read Access Token** dans votre compte TMDB et créer au besoin une application Simkl ou Trakt. Ne jamais envoyer les clés dans les issues GitHub ou un commit.
-3. Initialiser un profil et éventuellement en ajouter d'autres :
+   Cette commande génère la clé de chiffrement nécessaire à Trakt ; elle ne remplace pas une configuration existante. **Ne pas recopier `.env.example` par-dessus le fichier `.env` créé.**
+2. Modifier localement le fichier `.env` (jamais sur GitHub) et ajouter `TRAKT_CLIENT_ID` pour l'application Trakt personnelle et `TMDB_READ_TOKEN` pour TMDB. Vérifier la présence des réglages sans afficher les secrets :
 
    ```bash
-   # Ignorer init si prepare-local a déjà créé Principal
-   node --env-file=.env cli.mjs init "Principal"
+   node --env-file=.env cli.mjs doctor
+   ```
+
+   Ne pas envoyer les clés dans un ticket, un commit, un chat ou une pull request.
+3. Le profil `Principal` existe déjà. En créer d'autres uniquement si nécessaire :
+
+   ```bash
    node --env-file=.env cli.mjs add-profile "Profil secondaire"
    ```
 
@@ -40,14 +44,14 @@ Addon privé de **catalogues Stremio/Nuvio** : un seul moteur, un manifeste dist
 5. Relier un historique, si disponible, via **un seul fournisseur par profil** :
 
    ```bash
-   node --env-file=.env cli.mjs connect-trakt "Profil principal"
-   node --env-file=.env cli.mjs import-trakt "Profil principal"
+   node --env-file=.env cli.mjs connect-trakt "Principal"
+   node --env-file=.env cli.mjs import-trakt "Principal"
    # OU
-   node --env-file=.env cli.mjs connect-simkl "Profil principal"
-   node --env-file=.env cli.mjs import-simkl "Profil principal"
+   node --env-file=.env cli.mjs connect-simkl "Principal"
+   node --env-file=.env cli.mjs import-simkl "Principal"
    ```
 
-   Chaque commande `connect-*` affiche un code à autoriser dans un navigateur. Trakt requiert `TRAKT_CLIENT_ID` et, selon la méthode de liaison, `TRAKT_CLIENT_SECRET`. Simkl requiert `SIMKL_CLIENT_ID`.
+   Chaque commande `connect-*` affiche un code à autoriser dans un navigateur. Trakt requiert `TRAKT_CLIENT_ID` et peut requérir `TRAKT_CLIENT_SECRET` selon le type d’application ; le fournisseur doit être autorisé séparément pour chaque profil. Simkl requiert `SIMKL_CLIENT_ID`. Après le premier import Trakt, relancer `refresh-tmdb` pour enrichir les références de goûts.
 6. Démarrer l'addon et récupérer les liens privés :
 
    ```bash
