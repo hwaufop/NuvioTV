@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -14,10 +15,17 @@ import kotlinx.coroutines.launch
 internal fun HomeViewModel.observePersonalizedRecommendationHistoryPipeline() {
     viewModelScope.launch {
         profileManager.activeProfileId
-            .flatMapLatest { watchProgressRepository.allProgress }
+            .flatMapLatest { profileId ->
+                recommendationHistoryProfileId.value = null
+                recommendationHistory.value = emptyList()
+                scheduleUpdateCatalogRows()
+                watchProgressRepository.allProgress
+                    .map { history -> profileId to history }
+            }
             .distinctUntilChanged()
-            .collectLatest { history ->
+            .collectLatest { (profileId, history) ->
                 recommendationHistory.value = history
+                recommendationHistoryProfileId.value = profileId
                 scheduleUpdateCatalogRows()
             }
     }
