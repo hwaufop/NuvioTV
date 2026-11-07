@@ -1,0 +1,38 @@
+[
+  {
+    "id": "tt0816692",
+    "type": "movie",
+    "name": "Interstellar",
+    "poster": "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
+    "genres": [
+      "Sci-Fi",
+      "Drama"
+    ],
+    "rating": 8.6,
+    "popularity": 90
+  },
+  {
+    "id": "tt1375666",
+    "type": "movie",
+    "name": "Inception",
+    "poster": "https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg",
+    "genres": [
+      "Sci-Fi",
+      "Thriller"
+    ],
+    "rating": 8.8,
+    "popularity": 95
+  },
+  {
+    "id": "tt0109830",
+    "type": "movie",
+    "name": "Forrest Gump",
+    "poster": "https://image.tmdb.org/t/p/w500/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg",
+    "genres": [
+      "Romance",
+      "Drama"
+    ],
+    "rating": 8.8,
+    "popularity": 75
+  }
+]
