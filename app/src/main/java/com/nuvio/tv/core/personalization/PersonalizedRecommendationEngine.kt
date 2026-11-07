@@ -2,6 +2,7 @@
 package com.nuvio.tv.core.personalization
 
 import com.nuvio.tv.domain.model.MetaPreview
+import javax.inject.Inject
 
 /**
  * Classe les contenus selon les préférences d'un profil.
@@ -9,7 +10,7 @@ import com.nuvio.tv.domain.model.MetaPreview
  * Ce premier moteur est local et ne nécessite
  * aucun service externe.
  */
-class PersonalizedRecommendationEngine {
+class PersonalizedRecommendationEngine @Inject constructor() {
 
     fun recommend(
         profileId: Int,
