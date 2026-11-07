@@ -14,44 +14,68 @@ async function parallelLimit(arr,limit,fn){
   while(next<arr.length){const index=next++;output[index]=await fn(arr[index]);}
  }));return output;
 }
-export async function buildTmdbCatalog({token=process.env.TMDB_READ_TOKEN,fetchImpl=fetch,language='fr-FR',maxPerType=60}={}){
+export async function buildTmdbCatalog({token=process.env.TMDB_READ_TOKEN,fetchImpl=fetch,language='fr-FR',maxPerType=180,profiles=loadProfiles().profiles}={}){
  if(!token)throw new Error('TMDB_READ_TOKEN required to refresh the catalog');
- const h={authorization:`Bearer ${token}`};
- const api=(endpoint,params={})=>getJson(fetchImpl,`${TMDB}${endpoint}?${new URLSearchParams({language,...params})}`,h);
+ const headers={authorization:`Bearer ${token}`};
+ const api=(endpoint,params={})=>getJson(fetchImpl,`${TMDB}${endpoint}?${new URLSearchParams({language,...params})}`,headers);
  const genres={};
- for (const type of ['movie','tv']){
+ for(const type of ['movie','tv']){
   const data=await api(`/genre/${type}/list`);
-  genres[type]=Object.fromEntries((data.genres||[]).map(x=>[x.id,x.name]));
+  genres[type]=Object.fromEntries((data.genres||[]).map(g=>[g.id,g.name]));
  }
+ const toTitle=(type,item,id)=>({id,type:type==='tv'?'series':'movie',
+  name:item.title||item.name||item.original_name||item.original_title||'',
+  poster:item.poster_path?`https://image.tmdb.org/t/p/w500${item.poster_path}`:'',
+  ...(item.backdrop_path?{background:`https://image.tmdb.org/t/p/w1280${item.backdrop_path}`}:{}) ,
+  description:item.overview||'',genres:(item.genre_ids||[]).map(g=>genres[type][g]).filter(Boolean),
+  rating:item.vote_average||0,voteCount:item.vote_count||0,popularity:item.popularity||0,
+  year:Number((item.release_date||item.first_air_date||'').slice(0,4))||null});
  const tasks=[];
  for(const type of ['movie','tv']){
-  // Top rated gives good evergreen picks; trending adds recent discoveries.
-  const pages=await Promise.all([
-   api(`/trending/${type}/week`,{page:'1'}),
-   api(`/${type}/top_rated`,{page:'1'}),
-   api(`/${type}/popular`,{page:'1'})
-  ]);
+  // Mix contemporary, evergreen and genre-driven catalogs. Round-robin stops one
+  // popular genre from swallowing the entire candidate pool.
+  const genreIds=Object.keys(genres[type]).filter(id=>(type==='movie'?
+   [28,878,10749,35,16,27,9648,18,53,80]:[18,10765,35,80,9648,16,10759,10749]).includes(Number(id)));
+  const requests=[api(`/trending/${type}/week`,{page:'1'})];
+  for(const kind of ['top_rated','popular'])for(let page=1;page<=3;page++)requests.push(api(`/${type}/${kind}`,{page:String(page)}));
+  for(const genre of genreIds)requests.push(api(`/discover/${type}`,{page:'1',with_genres:genre,'vote_count.gte':'100',sort_by:'vote_average.desc',include_adult:'false'}));
+  const feeds=await Promise.all(requests);
   const found=new Map();
-  for (const page of pages) for(const item of page.results||[]){
-   if(item.id && item.poster_path && item.vote_count>=20) found.set(item.id,item);
+  const longest=Math.max(0,...feeds.map(f=>f.results?.length||0));
+  for(let index=0;index<longest && found.size<maxPerType;index++){
+   for(const feed of feeds){
+    const item=feed.results?.[index];
+    if(item?.id && item.poster_path && item.vote_count>=20 && !item.adult) found.set(item.id,item);
+    if(found.size>=maxPerType)break;
+   }
   }
-  for(const item of [...found.values()].slice(0,maxPerType))tasks.push({type,item});
+  for(const item of found.values())tasks.push({type,item});
  }
- // TMDB IDs are not guaranteed to work with existing stream addons; resolve IMDb IDs.
+ // Existing stream addons usually expect IMDb IDs rather than TMDB numeric IDs.
  const results=await parallelLimit(tasks,4,async({type,item})=>{
   try{
    const ext=await api(`/${type}/${item.id}/external_ids`);
    const id=ext.imdb_id;
    if(!/^tt\d{5,12}$/.test(id||''))return null;
-   return {id,type:type==='tv'?'series':'movie',name:item.title||item.name||item.original_name,
-    poster:`https://image.tmdb.org/t/p/w500${item.poster_path}`,
-    ...(item.backdrop_path?{background:`https://image.tmdb.org/t/p/w1280${item.backdrop_path}`}:{}) ,
-    description:item.overview||'',genres:(item.genre_ids||[]).map(g=>genres[type][g]).filter(Boolean),
-    rating:item.vote_average||0,voteCount:item.vote_count||0,popularity:item.popularity||0,
-    year:Number((item.release_date||item.first_air_date||'').slice(0,4))||null};
+   return toTitle(type,item,id);
   }catch(e){console.error('TMDB ID resolution failed:',item.id,e.message);return null;}
  });
- return [...new Map(results.filter(Boolean).map(item=>[item.type+':'+item.id,item])).values()];
+ const merged=new Map(results.filter(Boolean).map(item=>[`${item.type}:${item.id}`,item]));
+ // Trakt returns IMDb IDs. Include a bounded selection of the user's recent and
+ // highly rated titles as training references, even if they are no longer trending.
+ const historyIds=[...new Set(profiles.flatMap(p=>[
+  ...(p.recentWatchedIds||[]).slice(0,25),...(p.likedIds||[]).slice(0,15)
+ ]).filter(id=>/^tt\d{5,12}$/.test(id)))].slice(0,120);
+ const historyRows=await parallelLimit(historyIds,4,async(id)=>{
+  try{
+   const matches=await api(`/find/${id}`,{external_source:'imdb_id'});
+   return [...(matches.movie_results||[]).map(item=>({type:'movie',item})),
+           ...(matches.tv_results||[]).map(item=>({type:'tv',item}))]
+     .filter(({item})=>item?.id).map(({type,item})=>toTitle(type,item,id));
+  }catch(e){console.error('TMDB history reference unavailable:',id,e.message);return [];}
+ });
+ for(const item of historyRows.flat())if(item.name && item.genres.length)merged.set(`${item.type}:${item.id}`,item);
+ return [...merged.values()].filter(item=>item.name);
 }
 export async function refreshTmdb(options={}){
  const items=await buildTmdbCatalog(options);
@@ -138,10 +162,8 @@ export async function syncSimklIfChanged(profileId,{clientId=process.env.SIMKL_C
 }
 export async function syncAll({fetchImpl=fetch}={}){
  const summary={catalog:'skipped',profiles:[]};
- if(process.env.TMDB_READ_TOKEN){
-  const stale=(()=>{try{return Date.now()-fs.statSync(CATALOG_FILE).mtimeMs>24*3600*1000;}catch{return true;}})();
-  if(stale){try{summary.catalog=(await refreshTmdb({fetchImpl}));}catch(e){summary.catalog='error: '+e.message;}}
- }
+ // Synchronize histories FIRST: TMDB can then resolve watched titles as genre
+ // training references in the same pass, even for the first-ever setup.
  if(process.env.SIMKL_CLIENT_ID || process.env.TRAKT_CLIENT_ID){
   for(const p of loadProfiles().profiles){
    if(p.historySource==='trakt' && process.env.TRAKT_CLIENT_ID){
@@ -152,6 +174,13 @@ export async function syncAll({fetchImpl=fetch}={}){
    if(!p.simklTokenEncrypted || !process.env.SIMKL_CLIENT_ID)continue;
    try{summary.profiles.push(await syncSimklIfChanged(p.id,{fetchImpl}));}
    catch(e){summary.profiles.push({profile:p.name,status:'error',reason:e.message});}
+  }
+ }
+ if(process.env.TMDB_READ_TOKEN){
+  const stale=(()=>{try{return Date.now()-fs.statSync(CATALOG_FILE).mtimeMs>24*3600*1000;}catch{return true;}})();
+  if(stale || summary.profiles.some(p=>p.status==='updated')){
+   try{summary.catalog=await refreshTmdb({fetchImpl});}
+   catch(e){summary.catalog='error: '+e.message;}
   }
  }
  return summary;
