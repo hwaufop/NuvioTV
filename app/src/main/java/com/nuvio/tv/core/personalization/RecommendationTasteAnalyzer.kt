@@ -18,12 +18,20 @@ class RecommendationTasteAnalyzer @Inject constructor() {
             return emptyMap()
         }
 
+        // One title may appear in several addons. Prefer the copy with the
+        // richest genre metadata instead of accidentally keeping an empty one.
         val contentById = availableContent
+            .sortedBy { it.genres.size }
             .associateBy { "${it.apiType.trim().lowercase()}:${it.id}" }
 
         val scores = mutableMapOf<String, Int>()
 
-        history.forEach { progress ->
+        // An entire TV season should not outweigh every film just because
+        // its episodes were saved as separate progress entries.
+        // allProgress is ordered most-recent-first by the repository.
+        history.distinctBy { progress ->
+            "${progress.contentType.trim().lowercase()}:${progress.contentId}"
+        }.forEach { progress ->
             val key = "${progress.contentType.trim().lowercase()}:${progress.contentId}"
             val content = contentById[key] ?: return@forEach
 
