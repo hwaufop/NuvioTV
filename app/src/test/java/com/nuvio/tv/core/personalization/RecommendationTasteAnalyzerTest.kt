@@ -77,4 +77,42 @@ class RecommendationTasteAnalyzerTest {
 
         assertEquals(10, result["science fiction"])
     }
+
+    @Test
+    fun multipleEpisodesFromSameSeriesCountAsOneTitle() {
+        val show = MetaPreview(
+            id = "show-1",
+            type = ContentType.SERIES,
+            name = "Show",
+            poster = null,
+            posterShape = PosterShape.POSTER,
+            background = null,
+            logo = null,
+            description = null,
+            releaseInfo = null,
+            imdbRating = null,
+            genres = listOf("Drama")
+        )
+        val episodeProgress = progress("show-1", 95L).copy(contentType = "series")
+
+        val result = analyzer.analyze(
+            history = listOf(episodeProgress, episodeProgress.copy(episode = 2)),
+            availableContent = listOf(show)
+        )
+
+        assertEquals(5, result["drama"])
+    }
+
+    @Test
+    fun richerDuplicateMetadataIsUsed() {
+        val result = analyzer.analyze(
+            history = listOf(progress("a", 95L)),
+            availableContent = listOf(
+                movie("a", listOf("Action")),
+                movie("a", emptyList())
+            )
+        )
+
+        assertEquals(5, result["action"])
+    }
 }
