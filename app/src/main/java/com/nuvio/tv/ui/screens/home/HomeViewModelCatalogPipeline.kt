@@ -716,38 +716,50 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
 
     heroItemOrder = baseHeroItems.map { it.id }
 
-    // Rank currently loaded catalog content using this profile's watch history.
-    // Use a real catalog as the source so poster navigation keeps valid addon metadata.
-    val recommendationHistorySnapshot = if (recommendationHistoryProfileId.value == profileManager.activeProfileId.value) {
-        recommendationHistory.value
-    } else emptyList()
-    val watchedKeys = recommendationHistorySnapshot.mapTo(hashSetOf()) {
-        "${it.contentType.trim().lowercase()}:${it.contentId}"
-    }
-    // Prefer a catalog containing watched titles with genre metadata; this
-    // lets the local analyzer learn tastes without requesting extra metadata.
-    val recommendationSource = displayRows
-        .filter { row -> row.items.any { it.genres.isNotEmpty() } }
-        .maxByOrNull { row ->
-            row.items.count { item ->
-                "${item.apiType.trim().lowercase()}:${item.id}" in watchedKeys && item.genres.isNotEmpty()
+    // Learn taste from ALL loaded catalogs, but display recommendations from
+    // one source catalog so clicks and source-specific metadata stay valid.
+    val profileIdSnapshot = profileManager.activeProfileId.value
+    val recommendationHistorySnapshot =
+        if (recommendationHistoryProfileId.value == profileIdSnapshot) {
+            recommendationHistory.value
+        } else {
+            emptyList()
+        }
+    val recommendationRow = if (recommendationHistorySnapshot.isNotEmpty()) {
+        val candidateRows = displayRows.filter { row ->
+            row.items.any { item ->
+                !item.id.startsWith("__placeholder_")
             }
         }
-    val recommendationRow = if (recommendationSource != null && recommendationHistorySnapshot.isNotEmpty()) {
-        val candidates = recommendationSource.items
-            .filter { !it.id.startsWith("__placeholder_") }
-        val recommended = personalizedRecommendationService.recommend(
-            profileId = profileManager.activeProfileId.value,
+        val allCandidates = candidateRows.flatMap { row ->
+            row.items.filterNot { it.id.startsWith("__placeholder_") }
+        }
+        val ranked = personalizedRecommendationService.recommend(
+            profileId = profileIdSnapshot,
             history = recommendationHistorySnapshot,
-            availableContent = candidates
+            availableContent = allCandidates,
+            limit = 100
         )
-        if (recommended.isNotEmpty()) recommendationSource.copy(
-            catalogId = "__personalized_recommendations",
-            catalogName = "Recommandé pour vous",
-            items = recommended,
-            hasMore = false,
-            isLoading = false
-        ) else null
+        val rankedKeys = ranked.map { "${it.apiType}:${it.id}" }.toSet()
+        val source = candidateRows.maxByOrNull { row ->
+            row.items.count { "${it.apiType}:${it.id}" in rankedKeys }
+        }
+        val eligibleKeys = source?.items?.mapTo(hashSetOf()) {
+            "${it.apiType}:${it.id}"
+        }.orEmpty()
+        val sourceRecommendations = ranked
+            .filter { "${it.apiType}:${it.id}" in eligibleKeys }
+            .take(30)
+
+        if (source != null && sourceRecommendations.isNotEmpty()) {
+            source.copy(
+                catalogId = "__personalized_recommendations",
+                catalogName = "Recommandé pour vous",
+                items = sourceRecommendations,
+                hasMore = false,
+                isLoading = false
+            )
+        } else null
     } else null
 
     val (computedHomeRows, nextGridItems) = withContext(Dispatchers.Default) {
