@@ -716,8 +716,30 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
 
     heroItemOrder = baseHeroItems.map { it.id }
 
+    // Rank currently loaded catalog content using this profile's watch history.
+    // Use a real catalog as the source so poster navigation keeps valid addon metadata.
+    val recommendationHistorySnapshot = recommendationHistory.value
+    val recommendationSource = displayRows.firstOrNull { it.items.isNotEmpty() }
+    val recommendationRow = if (recommendationSource != null && recommendationHistorySnapshot.isNotEmpty()) {
+        val candidates = displayRows.flatMap { it.items }
+            .filter { !it.id.startsWith("__placeholder_") }
+        val recommended = personalizedRecommendationService.recommend(
+            profileId = profileManager.activeProfileId.value,
+            history = recommendationHistorySnapshot,
+            availableContent = candidates
+        )
+        if (recommended.isNotEmpty()) recommendationSource.copy(
+            catalogId = "__personalized_recommendations",
+            catalogName = "Recommandé pour vous",
+            items = recommended,
+            hasMore = false,
+            isLoading = false
+        ) else null
+    } else null
+
     val (computedHomeRows, nextGridItems) = withContext(Dispatchers.Default) {
         val computedHomeRows = buildList {
+            if (recommendationRow != null) add(HomeRow.Catalog(recommendationRow))
             val displayRowsByKey = displayRows.associateBy { it.legacyKey() }
             // Build a lookup of placeholder descriptors by key for lazy catalogs
             val placeholdersByKey = synchronized(catalogStateLock) {
