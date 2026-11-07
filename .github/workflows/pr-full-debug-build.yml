@@ -63,8 +63,8 @@ jobs:
 
           local = read_properties("local.properties")
           dev = read_properties("local.dev.properties")
-          backend = dev.get("NUVIO_SUPABASE_URL") or local.get("NUVIO_SUPABASE_URL")
-          key = dev.get("NUVIO_SUPABASE_ANON_KEY") or local.get("NUVIO_SUPABASE_ANON_KEY")
+          backend = dev.get("NUVIO_SUPABASE_URL") or local.get("NUVIO_SUPABASE_URL") or "https://api.nuvio.tv"
+          key = dev.get("NUVIO_SUPABASE_ANON_KEY") or local.get("NUVIO_SUPABASE_ANON_KEY") or "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN"
           if not backend or not key:
               raise SystemExit(
                   "Refusing to package a non-functional APK: configure LOCAL_PROPERTIES_BASE64 "
