@@ -57,8 +57,8 @@ jobs:
           def resolve(key, default=""):
               return dev.get(key, "").strip() or local.get(key, "").strip() or default
 
-          backend = resolve("NUVIO_SUPABASE_URL")
-          anon_key = resolve("NUVIO_SUPABASE_ANON_KEY")
+          backend = resolve("NUVIO_SUPABASE_URL", "https://api.nuvio.tv")
+          anon_key = resolve("NUVIO_SUPABASE_ANON_KEY", "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN")
           fallback = resolve("NUVIO_SUPABASE_FALLBACK_URL")
           redirect = dev.get("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link").strip()
 
@@ -95,8 +95,8 @@ jobs:
               return result
           local = read_props("local.properties")
           dev = read_props("local.dev.properties")
-          backend = dev.get("NUVIO_SUPABASE_URL", "").strip() or local.get("NUVIO_SUPABASE_URL", "").strip()
-          key = dev.get("NUVIO_SUPABASE_ANON_KEY", "").strip() or local.get("NUVIO_SUPABASE_ANON_KEY", "").strip()
+          backend = dev.get("NUVIO_SUPABASE_URL", "").strip() or local.get("NUVIO_SUPABASE_URL", "").strip() or "https://api.nuvio.tv"
+          key = dev.get("NUVIO_SUPABASE_ANON_KEY", "").strip() or local.get("NUVIO_SUPABASE_ANON_KEY", "").strip() or "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN"
           Path("/tmp/nuvio-backend-url").write_text(backend.rstrip("/"))
           Path("/tmp/nuvio-anon-key").write_text(key)
           PY
