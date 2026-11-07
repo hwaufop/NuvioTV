@@ -751,7 +751,14 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             .filter { "${it.apiType}:${it.id}" in eligibleKeys }
             .take(30)
 
-        if (source != null && sourceRecommendations.isNotEmpty()) {
+        // A profile switch may have happened while the suspend function ran.
+        // Never publish suggestions based on the previous user's history.
+        if (
+            source != null &&
+            sourceRecommendations.isNotEmpty() &&
+            recommendationHistoryProfileId.value == profileIdSnapshot &&
+            profileManager.activeProfileId.value == profileIdSnapshot
+        ) {
             source.copy(
                 catalogId = "__personalized_recommendations",
                 catalogName = "Recommandé pour vous",
