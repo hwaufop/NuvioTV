@@ -148,6 +148,7 @@ class HomeViewModel @Inject constructor(
     internal val _fullCatalogRows = MutableStateFlow<List<CatalogRow>>(emptyList())
     val fullCatalogRows: StateFlow<List<CatalogRow>> = _fullCatalogRows.asStateFlow()
     internal val recommendationHistory = MutableStateFlow<List<com.nuvio.tv.domain.model.WatchProgress>>(emptyList())
+    internal val recommendationHistoryProfileId = MutableStateFlow<Int?>(null)
 
     private val _focusState = MutableStateFlow(HomeScreenFocusState())
     val focusState: StateFlow<HomeScreenFocusState> = _focusState.asStateFlow()
@@ -393,6 +394,7 @@ class HomeViewModel @Inject constructor(
                 if (newId != previousProfileId) {
                     previousProfileId = newId
                     // Cancel old pipeline — prevents racing writes from stale coroutines.
+                    recommendationHistoryProfileId.value = null
                     recommendationHistory.value = emptyList()
                     cwPipelineJob?.cancel()
                     cwPipelineJob = null
