@@ -115,4 +115,16 @@ class RecommendationTasteAnalyzerTest {
 
         assertEquals(5, result["action"])
     }
+
+    @Test
+    fun imdbAliasMatchesWatchedHistory() {
+        val result = analyzer.analyze(
+            history = listOf(progress("tt0000042", 95L)),
+            availableContent = listOf(
+                movie("tmdb:42", listOf("Adventure")).copy(imdbId = "tt0000042")
+            )
+        )
+
+        assertEquals(5, result["adventure"])
+    }
 }
