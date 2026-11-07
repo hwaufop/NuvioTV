@@ -46,6 +46,34 @@ jobs:
             touch local.dev.properties
           fi
 
+      - name: Validate Nuvio backend configuration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read_properties(path):
+              values = {}
+              for raw in Path(path).read_text(errors="ignore").splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith(("#", "!")) or "=" not in line:
+                      continue
+                  key, value = line.split("=", 1)
+                  values[key.strip()] = value.strip()
+              return values
+
+          local = read_properties("local.properties")
+          dev = read_properties("local.dev.properties")
+          backend = dev.get("NUVIO_SUPABASE_URL") or local.get("NUVIO_SUPABASE_URL")
+          key = dev.get("NUVIO_SUPABASE_ANON_KEY") or local.get("NUVIO_SUPABASE_ANON_KEY")
+          if not backend or not key:
+              raise SystemExit(
+                  "Refusing to package a non-functional APK: configure LOCAL_PROPERTIES_BASE64 "
+                  "and/or LOCAL_DEV_PROPERTIES_BASE64 repository secrets containing "
+                  "NUVIO_SUPABASE_URL and NUVIO_SUPABASE_ANON_KEY."
+              )
+          print("Nuvio backend configuration is present.")
+          PY
+
       - name: Prepare CI signing config
         run: |
           keytool -genkeypair \
