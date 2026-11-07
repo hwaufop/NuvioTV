@@ -1,1 +1,8 @@
-{"name":"nuvio-reco-mvp","version":"0.1.0","private":true,"type":"module","scripts":{"start":"node server.mjs","test":"node --test test.mjs"},"engines":{"node":">=20"}}
+{
+  "name":"nuvio-reco",
+  "version":"0.2.0",
+  "private":true,
+  "type":"module",
+  "engines":{"node":">=22"},
+  "scripts":{"start":"node server.mjs","test":"node --test test.mjs","setup":"node cli.mjs init","sync:catalog":"node cli.mjs refresh-tmdb"}
+}
