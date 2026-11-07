@@ -1,3 +1,7 @@
-*.local.json
 .env
+.env.*
+!.env.example
 node_modules/
+*.local.json
+data/
+*.log
