@@ -721,7 +721,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
     val recommendationHistorySnapshot = recommendationHistory.value
     val recommendationSource = displayRows.firstOrNull { it.items.isNotEmpty() }
     val recommendationRow = if (recommendationSource != null && recommendationHistorySnapshot.isNotEmpty()) {
-        val candidates = displayRows.flatMap { it.items }
+        val candidates = recommendationSource.items
             .filter { !it.id.startsWith("__placeholder_") }
         val recommended = personalizedRecommendationService.recommend(
             profileId = profileManager.activeProfileId.value,
