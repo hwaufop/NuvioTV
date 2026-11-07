@@ -35,6 +35,9 @@ class PersonalizedRecommendationService @Inject constructor(
             preferencesStore.observePreferredGenres(profileId).first()
         }
 
+        // Without any genre signal this would only sort by rating, not taste.
+        if (preferences.values.none { it > 0 }) return emptyList()
+
         val watchedIds = history.mapTo(mutableSetOf()) { progress ->
             "${progress.contentType.trim().lowercase()}:${progress.contentId}"
         }
