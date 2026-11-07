@@ -34,7 +34,10 @@ class PersonalizedRecommendationEngine @Inject constructor() {
             .asSequence()
             .distinctBy { "${it.apiType}:${it.id}" }
             .filter { candidate ->
-                "${candidate.apiType}:${candidate.id}" !in watchedContentIds
+                val primaryKey = "${candidate.apiType}:${candidate.id}"
+                val imdbKey = candidate.imdbId?.let { "${candidate.apiType}:$it" }
+                primaryKey !in watchedContentIds &&
+                    (imdbKey == null || imdbKey !in watchedContentIds)
             }
             .sortedWith(
                 compareByDescending<MetaPreview> { candidate ->
