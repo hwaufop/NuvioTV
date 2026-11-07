@@ -20,9 +20,15 @@ class RecommendationTasteAnalyzer @Inject constructor() {
 
         // One title may appear in several addons. Prefer the copy with the
         // richest genre metadata instead of accidentally keeping an empty one.
-        val contentById = availableContent
-            .sortedBy { it.genres.size }
-            .associateBy { "${it.apiType.trim().lowercase()}:${it.id}" }
+        val contentById = buildMap {
+            availableContent.sortedBy { it.genres.size }.forEach { item ->
+                val type = item.apiType.trim().lowercase()
+                put("$type:${item.id}", item)
+                item.imdbId?.takeIf { it.isNotBlank() }?.let { imdbId ->
+                    put("$type:$imdbId", item)
+                }
+            }
+        }
 
         val scores = mutableMapOf<String, Int>()
 
