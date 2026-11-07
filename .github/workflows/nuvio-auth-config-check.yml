@@ -1,0 +1,112 @@
+name: Nuvio TV Auth Configuration Check
+
+on:
+  push:
+    branches:
+      - nuvio-recommandations
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auth-config:
+    name: Verify debug auth configuration and backend reachability
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Prepare local properties
+        env:
+          LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
+          LOCAL_DEV_PROPERTIES_BASE64: ${{ secrets.LOCAL_DEV_PROPERTIES_BASE64 }}
+        run: |
+          if [ -n "$LOCAL_PROPERTIES_BASE64" ]; then
+            printf '%s' "$LOCAL_PROPERTIES_BASE64" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+          if [ -n "$LOCAL_DEV_PROPERTIES_BASE64" ]; then
+            printf '%s' "$LOCAL_DEV_PROPERTIES_BASE64" | base64 --decode > local.dev.properties
+          else
+            touch local.dev.properties
+          fi
+
+      - name: Validate configuration without exposing credentials
+        id: config
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          def read_props(path):
+              result = {}
+              for raw in Path(path).read_text(errors="ignore").splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith(("#", "!")) or "=" not in line:
+                      continue
+                  key, value = line.split("=", 1)
+                  result[key.strip()] = value.strip()
+              return result
+
+          local = read_props("local.properties")
+          dev = read_props("local.dev.properties")
+
+          def resolve(key, default=""):
+              return dev.get(key, "").strip() or local.get(key, "").strip() or default
+
+          backend = resolve("NUVIO_SUPABASE_URL", "https://api.nuvio.tv")
+          anon_key = resolve("NUVIO_SUPABASE_ANON_KEY", "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN")
+          fallback = resolve("NUVIO_SUPABASE_FALLBACK_URL")
+          redirect = dev.get("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link").strip()
+
+          print("supabase_url_configured=" + str(bool(backend)).lower())
+          print("supabase_publishable_key_configured=" + str(bool(anon_key)).lower())
+          print("supabase_fallback_configured=" + str(bool(fallback)).lower())
+          print("device_login_redirect_valid=" + str(urlparse(redirect).scheme == "https" and bool(urlparse(redirect).netloc)).lower())
+          print("supabase_backend_host=" + (urlparse(backend).hostname or "missing"))
+          print("device_login_redirect_host=" + (urlparse(redirect).hostname or "missing"))
+
+          if not backend or not anon_key:
+              raise SystemExit("Missing Nuvio Supabase runtime configuration in CI secrets.")
+          if urlparse(backend).scheme != "https" or not urlparse(backend).netloc:
+              raise SystemExit("Nuvio Supabase URL is not a valid HTTPS URL.")
+          if urlparse(redirect).scheme != "https" or not urlparse(redirect).netloc:
+              raise SystemExit("Device login redirect URL is not a valid HTTPS URL.")
+          PY
+
+      - name: Check Supabase Auth and PostgREST reachability
+        env:
+          LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
+          LOCAL_DEV_PROPERTIES_BASE64: ${{ secrets.LOCAL_DEV_PROPERTIES_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def read_props(path):
+              result = {}
+              for raw in Path(path).read_text(errors="ignore").splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith(("#", "!")) or "=" not in line:
+                      continue
+                  key, value = line.split("=", 1)
+                  result[key.strip()] = value.strip()
+              return result
+          local = read_props("local.properties")
+          dev = read_props("local.dev.properties")
+          backend = dev.get("NUVIO_SUPABASE_URL", "").strip() or local.get("NUVIO_SUPABASE_URL", "").strip() or "https://api.nuvio.tv"
+          key = dev.get("NUVIO_SUPABASE_ANON_KEY", "").strip() or local.get("NUVIO_SUPABASE_ANON_KEY", "").strip() or "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN"
+          Path("/tmp/nuvio-backend-url").write_text(backend.rstrip("/"))
+          Path("/tmp/nuvio-anon-key").write_text(key)
+          PY
+          BACKEND_URL="$(cat /tmp/nuvio-backend-url)"
+          ANON_KEY="$(cat /tmp/nuvio-anon-key)"
+          AUTH_STATUS="$(curl --silent --show-error --max-time 15 -o /dev/null -w '%{http_code}' -H "apikey: $ANON_KEY" "$BACKEND_URL/auth/v1/health" || true)"
+          REST_STATUS="$(curl --silent --show-error --max-time 15 -o /dev/null -w '%{http_code}' -H "apikey: $ANON_KEY" "$BACKEND_URL/rest/v1/" || true)"
+          echo "supabase_auth_health_http_status=$AUTH_STATUS"
+          echo "supabase_postgrest_http_status=$REST_STATUS"
+          if [ "$AUTH_STATUS" = "000" ] && [ "$REST_STATUS" = "000" ]; then
+            echo "::error::GitHub runner could not reach the configured Supabase backend."
+            exit 1
+          fi

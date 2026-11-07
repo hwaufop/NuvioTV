@@ -716,8 +716,62 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
 
     heroItemOrder = baseHeroItems.map { it.id }
 
+    // Learn taste from ALL loaded catalogs, but display recommendations from
+    // one source catalog so clicks and source-specific metadata stay valid.
+    val profileIdSnapshot = profileManager.activeProfileId.value
+    val recommendationHistorySnapshot =
+        if (recommendationHistoryProfileId.value == profileIdSnapshot) {
+            recommendationHistory.value
+        } else {
+            emptyList()
+        }
+    val recommendationRow = if (recommendationHistorySnapshot.isNotEmpty()) {
+        val candidateRows = displayRows.filter { row ->
+            row.items.any { item ->
+                !item.id.startsWith("__placeholder_")
+            }
+        }
+        val allCandidates = candidateRows.flatMap { row ->
+            row.items.filterNot { it.id.startsWith("__placeholder_") }
+        }
+        val ranked = personalizedRecommendationService.recommend(
+            profileId = profileIdSnapshot,
+            history = recommendationHistorySnapshot,
+            availableContent = allCandidates,
+            limit = 100
+        )
+        val rankedKeys = ranked.map { "${it.apiType}:${it.id}" }.toSet()
+        val source = candidateRows.maxByOrNull { row ->
+            row.items.count { "${it.apiType}:${it.id}" in rankedKeys }
+        }
+        val eligibleKeys = source?.items?.mapTo(hashSetOf()) {
+            "${it.apiType}:${it.id}"
+        }.orEmpty()
+        val sourceRecommendations = ranked
+            .filter { "${it.apiType}:${it.id}" in eligibleKeys }
+            .take(30)
+
+        // A profile switch may have happened while the suspend function ran.
+        // Never publish suggestions based on the previous user's history.
+        if (
+            source != null &&
+            sourceRecommendations.isNotEmpty() &&
+            recommendationHistoryProfileId.value == profileIdSnapshot &&
+            profileManager.activeProfileId.value == profileIdSnapshot
+        ) {
+            source.copy(
+                catalogId = "__personalized_recommendations",
+                catalogName = appContext.getString(R.string.home_recommended_for_you),
+                items = sourceRecommendations,
+                hasMore = false,
+                isLoading = false
+            )
+        } else null
+    } else null
+
     val (computedHomeRows, nextGridItems) = withContext(Dispatchers.Default) {
         val computedHomeRows = buildList {
+            if (recommendationRow != null) add(HomeRow.Catalog(recommendationRow))
             val displayRowsByKey = displayRows.associateBy { it.legacyKey() }
             // Build a lookup of placeholder descriptors by key for lazy catalogs
             val placeholdersByKey = synchronized(catalogStateLock) {

@@ -3433,4 +3433,5 @@
     <string name="autosync_label_synced">Synchronisé automatiquement</string>
     <string name="stream_resume_from_time">Reprendre à %1$s</string>
     <string name="stream_resume_from_percent">Reprendre à %1$d&#160;%%</string>
+    <string name="home_recommended_for_you">Recommandé pour vous</string>
 </resources>
