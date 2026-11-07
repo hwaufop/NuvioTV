@@ -1,37 +1,90 @@
-# Nuvio Reco — MVP 0.1.0
+# Nuvio Reco — version de développement 0.2.0
 
-Addon de catalogues Stremio/Nuvio avec une URL d'installation distincte pour chaque profil. **Prototype** : données importées manuellement (pas encore de synchronisation Nuvio, Simkl ou Trakt).
+Addon privé de **catalogues Stremio/Nuvio** : un seul moteur, un manifeste distinct par profil, des recommandations différentes selon les goûts et l'historique. Le dépôt reste une branche de développement **non fusionnée, non déployée**. Le code peut être public, mais les secrets, les historiques et les URL privées ne doivent jamais être committés.
 
-## Installation locale
-Node.js >= 20 :
+## Fonctionnalités
 
-```bash
-cd nuvio-reco
-cp profiles.example.json profiles.local.json
-cp catalog.example.json catalog.local.json
-# Remplacer les jetons de démonstration par 24 octets aléatoires en hex :
-node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
-npm test
-npm start
-```
+- Films et séries : **Pour vous**, **Parce que vous avez regardé…** (affiche un titre quand celui-ci est identifiable), **Votre sélection du jour** ; jusqu'à 30 éléments par page.
+- Séparation des historiques et des jetons par profil ; impossibilité d'accéder à un profil avec le jeton d'un autre.
+- Exclusion des contenus vus et masqués ; regroupement des genres appréciés, historiques récents, notes et qualité TMDB.
+- Récupération des titres via l'API officielle **TMDB** avec résolution des identifiants IMDb : le catalogue peut être ouvert dans les autres addons utilisant les identifiants IMDb.
+- Import d'historique personnel depuis **Simkl** ou **Trakt**, après autorisation par code de liaison. Synchronisation périodique facultative, conditionnée à un compte lié et à l'hébergement en fonctionnement.
+- Chiffrement AES-256-GCM des jetons d'accès aux comptes de suivi à l'aide de `RECO_SECRET_KEY` (qui doit être sauvegardée hors du dépôt).
+- Un test de compatibilité réel sur Nuvio reste nécessaire : la prise en charge d'une installation d'addon différente pour chaque profil n'est **pas garantie** par le protocole lui-même.
 
-Installer dans le profil Nuvio correspondant l'URL `http://HOTE:7000/p/JETON/manifest.json`. Pour une installation depuis un autre appareil, exposer le serveur en HTTPS et configurer `PUBLIC_URL=https://votre-domaine`. Le port se règle par `PORT`, les chemins de configuration par `RECO_DATA_FILE` et `RECO_CATALOG_FILE`.
+## Préparer l'application en local
 
-Le jeton de profil est un secret : ne jamais partager les URLs d'installation ou ajouter les fichiers `*.local.json` dans Git. Le code se trouve dans une **branche d'un dépôt public**, sans identifiants réels.
+1. Installer Node.js 22 ou plus récent et ouvrir un terminal dans `nuvio-reco/`.
+2. Copier `.env.example` vers `.env` (ne jamais committer `.env`). Générer une clé :
 
-### Données
-- `profiles.local.json` : objet `{"profiles":[{"token":"HEX_32+","name":"...","watchedIds":[],"hiddenIds":[],"likedIds":[],"favoriteGenres":[],"recentlyWatchedGenres":[]}]}`
-- `catalog.local.json` : tableau de `{"id":"tt1234567","type":"movie","name":"Titre","poster":"https://...","genres":["Drama"],"rating":8.0,"popularity":20}`. Types : movie et series. IDs : IMDb `tt...` ou `tmdb:...`.
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
 
-### Trois catégories (films et séries)
-- **Pour vous** : genre, goûts, qualité et diversité.
-- **Parce que vous avez regardé…** : similarité de genres récemment vus, sans encore afficher un film source précis.
-- **Votre sélection du jour** : variation déterministe par date et par profil.
+   Mettre la valeur dans `RECO_SECRET_KEY=`. Pour les APIs, demander **TMDB API Read Access Token** dans votre compte TMDB et créer au besoin une application Simkl ou Trakt. Ne jamais envoyer les clés dans les issues GitHub ou un commit.
+3. Initialiser un profil et éventuellement en ajouter d'autres :
 
-Les titres vus et masqués sont exclus. Les calculs sont sans IA générative et sans frais API.
+   ```bash
+   node --env-file=.env cli.mjs init "Profil principal"
+   node --env-file=.env cli.mjs add-profile "Profil secondaire"
+   ```
 
-### Limites
-- Il faut alimenter les données et les historiques manuellement jusqu'à l'ajout de Simkl/Trakt + TMDB.
-- **La compatibilité réelle de la séparation des installations par profil Nuvio reste à vérifier sur l'appareil**.
-- Les catalogues doivent être accessibles par Nuvio sans connexion interactive ; protéger les tokens et ne pas exposer la page de configuration (non implémentée).
-- Aucun hébergement ou déploiement n'est fourni par GitHub.
+4. Alimenter le catalogue :
+
+   ```bash
+   node --env-file=.env cli.mjs refresh-tmdb
+   ```
+
+   Pour tester sans clé, copier `catalog.example.json` vers `data/catalog.json` (les exemples ont peu de titres). Un profil sans historique obtient une sélection généraliste ; elle devient personnalisée après synchronisation ou réglage manuel des goûts.
+5. Relier un historique, si disponible, via **un seul fournisseur par profil** :
+
+   ```bash
+   node --env-file=.env cli.mjs connect-trakt "Profil principal"
+   node --env-file=.env cli.mjs import-trakt "Profil principal"
+   # OU
+   node --env-file=.env cli.mjs connect-simkl "Profil principal"
+   node --env-file=.env cli.mjs import-simkl "Profil principal"
+   ```
+
+   Chaque commande `connect-*` affiche un code à autoriser dans un navigateur. Trakt requiert `TRAKT_CLIENT_ID` et, selon la méthode de liaison, `TRAKT_CLIENT_SECRET`. Simkl requiert `SIMKL_CLIENT_ID`.
+6. Démarrer l'addon et récupérer les liens privés :
+
+   ```bash
+   node --env-file=.env server.mjs
+   # Dans un autre terminal :
+   node --env-file=.env cli.mjs profiles
+   ```
+
+   Le service écoute **sur 127.0.0.1 uniquement** par défaut, donc il n'est pas accessible depuis la TV. Un domaine et un accès **HTTPS** seront nécessaires pour une installation distante. Le client Nuvio doit pouvoir consulter les chemins `/p/<jeton>/manifest.json` et `/p/<jeton>/catalog/...` sans authentification interactive. Les jetons privés dans l'URL sont la protection de ces chemins ; ne pas les publier.
+
+## Docker (optionnel)
+
+`docker compose up -d --build` pour lancer le service en privé, exposé uniquement sur `127.0.0.1:7000` de l'hôte. `./data` doit être accessible en lecture/écriture à l'UID 1000 du conteneur. La première configuration et l'import TMDB se font via les commandes CLI dans le conteneur ou sur l'hôte. Configurer un reverse proxy HTTPS séparément pour l'accès depuis Nuvio sur d'autres appareils ; **aucun service n'est exposé publiquement par défaut**.
+
+Lorsque `AUTO_SYNC=1` et que les comptes sont connectés, le serveur vérifie les activités Trakt/Simkl environ toutes les 6 heures ; il met à jour le catalogue TMDB si son cache dépasse 24 heures. Simkl utilise l'endpoint d'activités et les mises à jour incrémentales (`date_from`) après le premier import ; les retraits détectés déclenchent une nouvelle synchronisation complète.
+
+## Commandes utiles
+
+| Commande | Effet |
+|---|---|
+| `node --env-file=.env cli.mjs profiles` | Affiche les URL d'installation privées |
+| `node --env-file=.env cli.mjs add-profile "X"` | Crée un profil séparé |
+| `node --env-file=.env cli.mjs rotate-token "X"` | Révoque l'ancienne URL (nécessite réinstallation) |
+| `node --env-file=.env cli.mjs refresh-tmdb` | Reconstitue le catalogue TMDB |
+| `node --env-file=.env cli.mjs sync-all` | Lance la synchronisation des profils déjà liés |
+| `npm test` | Lance tous les tests hors ligne |
+
+## Sécurité, vie privée, limites
+
+- **Aucun compte réel n'est lié actuellement** : le code prépare les intégrations, les autorisations restent à faire par leurs propriétaires.
+- La séparation des configurations Nuvio entre profils, l'ouverture des métadonnées, la lecture des titres, les PIN réels et l'accès distant doivent être vérifiés sur l'appareil de destination.
+- L'import Simkl ne retient que les entrées de statut *completed*, et les identifiants IMDb valides. Les séries commencées mais non terminées et les entrées sans IMDb ID ne sont pas encore couvertes exhaustivement.
+- L'API TMDB et les connexions Simkl/Trakt ont été testées avec des réponses **simulées**, pas avec des clés réelles dans ce dépôt.
+- Les listes de démonstration ne sont pas un vrai catalogue ; la qualité des recommandations dépend de la richesse des données importées.
+- Les règles de synchronisation et de cache devront être revérifiées avec les comptes réels. En particulier, la suppression d'une note ou une modification côté fournisseur peut nécessiter une reconstruction complète de l'historique.
+- Une URL `/p/<token>` est un **jeton d'accès** : même chiffrés à part, les historiques de visionnage ne doivent pas être exposés sur une machine non maîtrisée.
+- Ne pas fusionner la PR, déployer sur Internet, engager des frais cloud ou modifier une application Nuvio existante sans décision explicite.
+
+## Attribution TMDB
+
+*This product uses the TMDB API but is not endorsed or certified by TMDB.* [TMDB](https://www.themoviedb.org) est la source des métadonnées et images. Avant toute diffusion publique, ajouter un logo officiel TMDB approuvé et vérifier la conformité de la page « Crédits » avec [les règles d'attribution](https://developer.themoviedb.org/docs/faq). Les historiques personnels proviennent uniquement des comptes Trakt/Simkl autorisés.
