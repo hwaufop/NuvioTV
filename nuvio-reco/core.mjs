@@ -104,7 +104,7 @@ export function buildManifest(profile,catalog){
     return {type,id,name:anchor?`Parce que vous avez regardé ${anchor.name}`:
       id==='because-you-watched'?'Dans le style de vos découvertes':label,extra:[{name:'skip',isRequired:false}]};
   }));
-  return {id:`org.nuvio.reco.${hash}`,version:'0.2.0',name:`Nuvio Reco — ${profile.name||'Profil'}`,
+  return {id:`org.nuvio.reco.${hash}`,version:'0.3.0',name:`Nuvio Reco — ${profile.name||'Profil'}`,
     description:'Catalogues adaptés à un seul profil',resources:['catalog','meta'],types:['movie','series'],idPrefixes:['tt'],
     catalogs,behaviorHints:{configurable:false}};
 }
