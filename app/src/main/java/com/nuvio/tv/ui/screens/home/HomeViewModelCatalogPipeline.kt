@@ -761,7 +761,7 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
         ) {
             source.copy(
                 catalogId = "__personalized_recommendations",
-                catalogName = "Recommandé pour vous",
+                catalogName = appContext.getString(R.string.home_recommended_for_you),
                 items = sourceRecommendations,
                 hasMore = false,
                 isLoading = false
