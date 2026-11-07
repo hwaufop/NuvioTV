@@ -1,0 +1,20 @@
+name: Nuvio Reco Tests
+on:
+  push:
+    paths:
+      - 'nuvio-reco/**'
+  pull_request:
+    paths:
+      - 'nuvio-reco/**'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nuvio-reco
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
