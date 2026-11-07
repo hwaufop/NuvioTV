@@ -1,8 +1,15 @@
 {
-  "name":"nuvio-reco",
-  "version":"0.3.0",
-  "private":true,
-  "type":"module",
-  "engines":{"node":">=22"},
-  "scripts":{"start":"node server.mjs","test":"node --test test.mjs","setup":"node cli.mjs init","sync:catalog":"node cli.mjs refresh-tmdb"}
+  "name": "nuvio-reco",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test.mjs",
+    "setup": "node cli.mjs prepare-local",
+    "sync:catalog": "node cli.mjs refresh-tmdb"
+  }
 }
