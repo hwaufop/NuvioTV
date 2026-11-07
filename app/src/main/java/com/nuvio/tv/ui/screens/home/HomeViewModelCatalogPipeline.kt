@@ -718,7 +718,9 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
 
     // Rank currently loaded catalog content using this profile's watch history.
     // Use a real catalog as the source so poster navigation keeps valid addon metadata.
-    val recommendationHistorySnapshot = recommendationHistory.value
+    val recommendationHistorySnapshot = if (recommendationHistoryProfileId.value == profileManager.activeProfileId.value) {
+        recommendationHistory.value
+    } else emptyList()
     val watchedKeys = recommendationHistorySnapshot.mapTo(hashSetOf()) {
         "${it.contentType.trim().lowercase()}:${it.contentId}"
     }
